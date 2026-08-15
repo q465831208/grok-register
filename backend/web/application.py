@@ -20,7 +20,7 @@ from typing import Any, Dict, Iterator, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -111,6 +111,8 @@ CONFIG_PUBLIC_KEYS = (
     "yyds_jwt",
     "yyds_default_domain",
     "account_interval",
+    "browser_backend",
+    "nexbrowser",
 )
 
 SENSITIVE_HINT_KEYS = {
@@ -129,6 +131,7 @@ SENSITIVE_HINT_KEYS = {
     "yyds_api_key",
     "yyds_jwt",
     "proxy",
+    "nexbrowser",
 }
 
 
@@ -157,6 +160,10 @@ class LoginBody(BaseModel):
     username: str = ""
     password: str = ""
     confirm_password: str = ""
+
+
+class ConvertSsoBody(BaseModel):
+    email: str = ""
 
 
 def _batch_account_ids(ids: List[int]) -> List[int]:
@@ -446,6 +453,18 @@ def _apply_config_updates(updates: Dict[str, Any]) -> Dict[str, Any]:
                     if item.isdigit():
                         cleaned.append(item)
             value = ",".join(cleaned)
+        elif key == "browser_backend":
+            value = str(value or "").strip().lower() or "camoufox"
+            if value not in ("camoufox", "nexbrowser"):
+                value = "camoufox"
+        elif key == "nexbrowser" and isinstance(value, dict):
+            # 保留完整 dict，只确保必要字段存在
+            nex = dict(value)
+            nex.setdefault("api_host", "")
+            nex.setdefault("api_key", "")
+            nex.setdefault("team_id", 0)
+            nex.setdefault("window_id", 0)
+            value = nex
         else:
             if isinstance(value, (dict, list)):
                 continue
@@ -1504,6 +1523,133 @@ def create_app() -> FastAPI:
             return {"ok": True, "items": items, "blocked": blocked}
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"连通性检查失败: {exc}") from exc
+
+    # ---- SSO → CPA 转换工具 ----
+    @app.get("/convert-sso")
+    def convert_sso_page():
+        return HTMLResponse("""<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>SSO → CPA 转换</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, system-ui, sans-serif; background:#f5f5f5; display:flex; justify-content:center; padding:40px 20px; }
+.card { background:#fff; border-radius:12px; padding:32px; max-width:480px; width:100%; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+h1 { font-size:20px; margin-bottom:4px; }
+p { color:#666; font-size:14px; margin-bottom:20px; }
+label { display:block; font-size:14px; font-weight:600; margin-bottom:6px; }
+input, textarea { width:100%; padding:10px 12px; border:1px solid #ddd; border-radius:8px; font-size:14px; margin-bottom:16px; }
+input:focus, textarea:focus { outline:none; border-color:#7c3aed; box-shadow:0 0 0 3px rgba(124,58,237,.15); }
+button { width:100%; padding:10px; background:#7c3aed; color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+button:hover { background:#6d28d9; }
+button:disabled { opacity:.5; cursor:not-allowed; }
+#result { margin-top:16px; padding:12px; border-radius:8px; font-size:13px; display:none; white-space:pre-wrap; }
+#result.success { display:block; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; }
+#result.error { display:block; background:#fef2f2; color:#991b1b; border:1px solid #fecaca; }
+.back { display:inline-block; margin-top:16px; font-size:13px; color:#7c3aed; text-decoration:none; }
+</style></head>
+<body>
+<div class="card">
+<h1>SSO → CPA 转换</h1>
+<p>输入邮箱地址，将 sso_pending.txt 中的 SSO 转换为 CPA token 并上传到远程 CPA。</p>
+<form id="form" onsubmit="return convert(event)">
+<label for="email">邮箱地址</label>
+<input type="email" id="email" placeholder="user@domain.com" required>
+<button type="submit" id="btn">转换并上传</button>
+</form>
+<div id="result"></div>
+<a class="back" href="/">&larr; 返回首页</a>
+</div>
+<script>
+async function convert(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btn');
+    const email = document.getElementById('email').value.trim();
+    const result = document.getElementById('result');
+    result.style.display = 'none';
+    btn.disabled = true;
+    btn.textContent = '转换中...';
+    try {
+        const r = await fetch('/api/accounts/convert-sso', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email})
+        });
+        const data = await r.json();
+        if (r.ok) {
+            result.className = 'success';
+            result.textContent = '✅ 转换成功！\\n\\n' + (data.detail || '');
+        } else {
+            result.className = 'error';
+            result.textContent = '❌ ' + (data.detail || data.message || '未知错误');
+        }
+    } catch (err) {
+        result.className = 'error';
+        result.textContent = '❌ 网络错误: ' + err.message;
+    }
+    result.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '转换并上传';
+    return false;
+}
+</script>
+</body>
+</html>""")
+
+    @app.post("/api/accounts/convert-sso")
+    def api_convert_sso(body: ConvertSsoBody) -> Dict[str, Any]:
+        gr = _gr()
+        email = (body.email or "").strip().lower()
+        if not email:
+            raise HTTPException(status_code=400, detail="请提供邮箱地址")
+        # 1. Read SSO from pending
+        pending = Path(gr.CONFIG_FILE).parent / "data" / "accounts" / "sso_pending.txt"
+        sso = None
+        rest = []
+        if pending.exists():
+            for line in pending.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line.startswith(email + "----"):
+                    parts = line.split("----", 1)
+                    if len(parts) == 2:
+                        sso = parts[1]
+                else:
+                    rest.append(line)
+        if not sso:
+            raise HTTPException(status_code=404, detail=f"在 sso_pending.txt 中未找到 {email} 的 SSO")
+        # 2. Convert SSO → token
+        from backend.integrations.auth_exchange import (
+            sso_to_token_device_flow, write_cpa_auth, upload_cpa_auth_remote,
+            token_to_cpa_record, cpa_auth_filename
+        )
+        logs = []
+        try:
+            tokens = sso_to_token_device_flow(sso, proxy="", log=lambda m: logs.append(m))
+            if not tokens:
+                raise Exception("Device Flow 返回空")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"SSO 换 token 失败: {e}")
+        # 3. Write local CPA
+        auth_dir = Path(gr.CONFIG_FILE).parent / "data" / "cpa_auth"
+        record = token_to_cpa_record(tokens, email=email, sso=sso)
+        write_cpa_auth(auth_dir, record)
+        local_name = cpa_auth_filename(record)
+        # 4. Upload to remote CPA
+        remote_url = gr.config.get("cpa_remote_url", "")
+        mgmt_key = gr.config.get("cpa_management_key", "")
+        upload_ok = False
+        if remote_url and mgmt_key:
+            try:
+                upload_cpa_auth_remote(remote_url, mgmt_key, record, timeout=30)
+                upload_ok = True
+            except Exception as e:
+                logs.append(f"远程上传失败: {e}")
+        # 5. Save pending (remove processed)
+        if sso:
+            pending.write_text("\n".join(rest) + ("\n" if rest else ""), encoding="utf-8")
+        detail = f"本地 CPA: {local_name}\\n远程上传: {'✅ 成功' if upload_ok else '❌ 跳过'}"
+        if logs:
+            detail += "\\n日志:\\n" + "\\n".join(logs)
+        return {"ok": True, "detail": detail, "email": email, "file": local_name}
 
     # ---- static SPA ----
     if (STATIC_DIR / "assets").is_dir():

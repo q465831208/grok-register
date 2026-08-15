@@ -358,9 +358,18 @@ DEFAULT_CONFIG = {
     "mailnest_api_key": "",
     "mailnest_project_code": "x-ai001",
     # YYDS：留空自动选已验证域名；填写则固定该域名
-    "yyds_default_domain": "",
+    "yyds_default_domain": "vmail.us.ci oocoo.ggff.net cooo.gv.uy ls123.us.ci lsooo.kdns.fr",
     # 账号间注册间隔（秒），0=不等待。填一个整数=N秒固定等待，填区间"60-120"=随机等待
     "account_interval": "60-120",
+    # 浏览器后端：camoufox（默认）/ nexbrowser（通过 CDP 连接 NexBrowser 窗口）
+    "browser_backend": "camoufox",
+    # NexBrowser 连接配置（browser_backend=nexbrowser 时生效）
+    "nexbrowser": {
+        "api_host": "",
+        "api_key": "",
+        "team_id": 0,
+        "window_id": 0,
+    },
 }
 
 config = DEFAULT_CONFIG.copy()
@@ -2020,11 +2029,30 @@ def yyds_get_email_and_token(api_key=None, jwt=None):
     token = jwt or get_yyds_jwt()
     if not token and not key:
         raise Exception("YYDS API Key 或 JWT 未配置")
-    domain = get_yyds_default_domain() or yyds_pick_domain(api_key=key, jwt=token)
+    _raw = get_yyds_default_domain()
+    if _raw:
+        # 支持多个域名用空格/逗号分隔，随机选一个
+        domains = [d.strip() for d in re.split(r'[\s,]+', _raw) if d.strip()]
+        domain = random.choice(domains) if len(domains) > 1 else domains[0]
+    else:
+        domain = yyds_pick_domain(api_key=key, jwt=token)
     username = yyds_generate_username(10)
-    result = yyds_create_account(
-        local_part=username, domain=domain, api_key=key, jwt=token
-    )
+    # YYDS API 间歇性 TLS 错误时自动重试一次
+    for attempt in range(2):
+        try:
+            result = yyds_create_account(
+                local_part=username, domain=domain, api_key=key, jwt=token
+            )
+            break
+        except Exception as exc:
+            err_msg = str(exc)
+            if attempt == 0 and ("SSL" in err_msg or "BoringSSL" in err_msg or "Connection closed" in err_msg):
+                print(f"[*] YYDS 创建邮箱 TLS 错误，重试一次... {err_msg[:60]}")
+                if _raw:
+                    domain = random.choice([d.strip() for d in re.split(r'[\s,]+', _raw) if d.strip()])
+                time.sleep(3)
+                continue
+            raise
     address = result.get("address") or f"{username}@{domain}"
     temp_token = result.get("token")
     if not temp_token:
@@ -2745,6 +2773,7 @@ def _wire_runtime_modules():
         get_locale=get_browser_locale,
         get_engine=get_browser_engine,
         extension_path=EXTENSION_PATH,
+        nexbrowser_config=config.get("nexbrowser"),
     )
     _rf.configure(
         get_email_and_token=get_email_and_token,

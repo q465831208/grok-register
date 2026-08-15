@@ -121,6 +121,7 @@ def configure(
     get_locale=None,
     get_engine=None,
     extension_path="",
+    nexbrowser_config=None,
 ):
     global _get_proxy, _is_debug, _is_headless, _get_locale, _get_engine, _extension_path
     _get_proxy = get_proxies
