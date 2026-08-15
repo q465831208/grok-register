@@ -133,9 +133,13 @@ def _native_elements(tag: str):
 
 
 def _native_click_action(keywords, deny_keywords=()) -> str:
-    """按可见文本用 CDP 原生事件点击；返回按钮文字。"""
-    keys = [str(x).replace(" ", "").lower() for x in keywords]
-    denied = [str(x).replace(" ", "").lower() for x in deny_keywords]
+    """按可见文本用 CDP 原生事件点击；返回按钮文字。
+
+    文本归一化时同时去掉空格与连字符（法语 e-mail / 德语 E-Mail 等写法），
+    避免 `email` 与 `e-mail` 互相匹配不上。
+    """
+    keys = [re.sub(r"[\s-]+", "", str(x)).lower() for x in keywords]
+    denied = [re.sub(r"[\s-]+", "", str(x)).lower() for x in deny_keywords]
     candidates = []
     for tag in ("button", "a", "input"):
         for element in _native_elements(tag):
@@ -149,7 +153,7 @@ def _native_click_action(keywords, deny_keywords=()) -> str:
             if _native_attr(element, "aria-disabled").lower() == "true":
                 continue
             label = _native_label(element)
-            compact = re.sub(r"\s+", "", label).lower()
+            compact = re.sub(r"[\s-]+", "", label).lower()
             if not compact or any(item in compact for item in denied):
                 continue
             score = max((len(item) for item in keys if item and item in compact), default=0)
@@ -314,14 +318,19 @@ def click_email_signup_button(timeout=10, log_callback=None, cancel_callback=Non
                 "使用邮箱注册", "signup with email", "continue with email", "sign up with email",
                 # 西班牙语
                 "regístrate con correo", "registrate con correo",
-                # 法语
-                "s'inscrire avec", "inscrire avec l",
+                # 法语 — avec e-mail / avec l'e-mail 都覆盖（归一化去连字符后同写）
+                "s'inscrire avec", "inscrire avec", "s'inscrire par e-mail",
                 # 德语
                 "mit e-mail registrieren", "mit email registrieren",
                 # 葡萄牙语
                 "inscrever-se com email", "inscreverse com email",
                 # 意大利语
                 "registrati con email",
+            ),
+            # 排除第三方品牌登录按钮（法/英/中）：avec X / Apple / Google / Microsoft
+            deny_keywords=(
+                "avec x", "apple", "google", "microsoft",
+                "continue with x", "苹果", "谷歌",
             ),
         )
         if native_clicked:
@@ -354,7 +363,7 @@ function scoreEntry(node) {
     if (testid.includes('email') && (testid.includes('signup') || testid.includes('continue') || testid.includes('register'))) return 100;
     if (testid === 'signup-email' || testid === 'register-email' || testid === 'email-signup') return 100;
 
-    const compact = nodeText(node).replace(/\s+/g, '');
+    const compact = nodeText(node).replace(/[\s-]+/g, '');
     const lower = compact.toLowerCase();
     // 中文
     if (compact.includes('使用邮箱注册')) return 100;
@@ -943,7 +952,7 @@ function scoreEntry(node) {
     if (testid.includes('email') && (testid.includes('signup') || testid.includes('continue') || testid.includes('register'))) return 100;
     if (testid === 'signup-email' || testid === 'register-email' || testid === 'email-signup') return 100;
 
-    const compact = nodeText(node).replace(/\s+/g, '');
+    const compact = nodeText(node).replace(/[\s-]+/g, '');
     const lower = compact.toLowerCase();
     // 中文
     if (compact.includes('使用邮箱注册')) return 100;

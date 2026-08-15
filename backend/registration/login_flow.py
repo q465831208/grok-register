@@ -139,8 +139,12 @@ def _reveal_email_input(log_callback=None):
         except Exception:
             pass
         clicked = _native_click_action(
-            ("login with email", "使用邮箱登录", "邮箱登录", "continue with email"),
-            deny_keywords=("sign up", "注册"),
+            (
+                "login with email", "使用邮箱登录", "邮箱登录", "continue with email",
+                # 法语: Se connecter avec e-mail / Continuer avec e-mail
+                "se connecter avec", "continuer avec e-mail",
+            ),
+            deny_keywords=("sign up", "注册", "apple", "google", "s'inscrire", "inscription", "avec x"),
         )
         if not clicked:
             last_error = "登录页未找到“使用邮箱登录”按钮"
