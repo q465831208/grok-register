@@ -246,7 +246,7 @@ const text = String(document.body && document.body.innerText || '')
 const controls = [...document.querySelectorAll('button,a,[role="button"]')]
   .filter(visible)
   .map((node) => String(node.innerText || node.textContent || node.getAttribute('aria-label') || ''))
-  .join(' ').toLowerCase();
+  .join(' ').toLowerCase().replace(/[-\s]+/g, '');
 const hasEmailInput = [...document.querySelectorAll('input')].some((node) => {
   if (!visible(node)) return false;
   const meta = [node.type, node.name, node.autocomplete, node.placeholder, node.getAttribute('data-testid')]
@@ -256,8 +256,9 @@ const hasEmailInput = [...document.querySelectorAll('input')].some((node) => {
 return {
   url: String(location.href || ''),
   text,
-  ready: hasEmailInput || controls.includes('login with email')
-    || controls.includes('continue with email') || controls.includes('使用邮箱登录'),
+  ready: hasEmailInput || controls.includes('loginwithemail')
+    || controls.includes('continuewithemail') || controls.includes('使用邮箱登录')
+    || controls.includes('seconnecteravecemail') || controls.includes('continueravecemail'),
 };
 """
         )
