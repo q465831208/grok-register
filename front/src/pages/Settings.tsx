@@ -93,6 +93,10 @@ const BROWSER_ENGINES = [
   { value: "camoufox", label: "Camoufox（Firefox，默认）" },
   { value: "cloakbrowser", label: "CloakBrowser（Chromium）" },
 ];
+const BROWSER_BACKENDS = [
+  { value: "camoufox", label: "Camoufox（内置浏览器）" },
+  { value: "nexbrowser", label: "NexBrowser（CDP 联动）" },
+];
 const CLOUDFLARE_AUTH_MODES = [
   { value: "none", label: "无需鉴权" },
   { value: "bearer", label: "Bearer Token" },
@@ -417,18 +421,80 @@ export function SettingsPage({ section = "registration" }: { section?: SettingsS
             <ConfigField {...fieldState} label="并发浏览器数" field="register_workers" type="number" />
             <ConfigField {...fieldState} label="日志级别" field="log_level" placeholder="info（普通）/ debug（详细）" />
             <div className="min-w-0 space-y-2">
-              <Label htmlFor="browser_engine">浏览器后端</Label>
-              <Select
-                id="browser_engine"
-                value={config.browser_engine || "camoufox"}
-                onChange={(event) => setField("browser_engine", event.target.value)}
-              >
-                {BROWSER_ENGINES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-              </Select>
-              <p className="text-xs leading-5 text-muted-foreground">
-                Camoufox 始终保留；选择 CloakBrowser 后仅替换启动后端，注册流程保持一致。
-              </p>
-            </div>
+                          <Label htmlFor="browser_backend">浏览器后端</Label>
+                          <Select
+                            id="browser_backend"
+                            value={config.browser_backend || "camoufox"}
+                            onChange={(event) => setField("browser_backend", event.target.value)}
+                          >
+                            {BROWSER_BACKENDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          </Select>
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            Camoufox 使用内置浏览器；选择 NexBrowser 后通过 CDP 连接指定窗口（复用指纹/代理）。
+                            切换后端后需<strong>重启服务</strong>生效。
+                          </p>
+                        </div>
+                        {config.browser_backend === "nexbrowser" ? (
+                          <div className="space-y-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 sm:col-span-2">
+                            <div className="text-sm font-medium text-foreground">NexBrowser 连接配置</div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="min-w-0 space-y-2">
+                                <Label htmlFor="nex_api_host">API 地址</Label>
+                                <Input
+                                  id="nex_api_host"
+                                  placeholder="http://127.0.0.1:45536"
+                                  value={config.nexbrowser?.api_host ?? ""}
+                                  onChange={(event) => setField("nexbrowser", { ...(config.nexbrowser || {}), api_host: event.target.value })}
+                                />
+                              </div>
+                              <div className="min-w-0 space-y-2">
+                                <Label htmlFor="nex_api_key">API Token</Label>
+                                <Input
+                                  id="nex_api_key"
+                                  type="password"
+                                  placeholder="本地 OpenAPI token"
+                                  value={config.nexbrowser?.api_key ?? ""}
+                                  onChange={(event) => setField("nexbrowser", { ...(config.nexbrowser || {}), api_key: event.target.value })}
+                                />
+                              </div>
+                              <div className="min-w-0 space-y-2">
+                                <Label htmlFor="nex_team_id">Team ID</Label>
+                                <Input
+                                  id="nex_team_id"
+                                  type="number"
+                                  value={config.nexbrowser?.team_id ?? 0}
+                                  onChange={(event) => setField("nexbrowser", { ...(config.nexbrowser || {}), team_id: Number(event.target.value) })}
+                                />
+                              </div>
+                              <div className="min-w-0 space-y-2">
+                                <Label htmlFor="nex_window_id">窗口 ID</Label>
+                                <Input
+                                  id="nex_window_id"
+                                  type="number"
+                                  value={config.nexbrowser?.window_id ?? 0}
+                                  onChange={(event) => setField("nexbrowser", { ...(config.nexbrowser || {}), window_id: Number(event.target.value) })}
+                                />
+                              </div>
+                            </div>
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              从 NexBrowser 本地 OpenAPI 打开/复用窗口并获取 CDP 端点；代理、指纹、Cookie 由 NexBrowser 窗口管理。
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="min-w-0 space-y-2">
+                            <Label htmlFor="browser_engine">浏览器引擎</Label>
+                            <Select
+                              id="browser_engine"
+                              value={config.browser_engine || "camoufox"}
+                              onChange={(event) => setField("browser_engine", event.target.value)}
+                            >
+                              {BROWSER_ENGINES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                            </Select>
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              Camoufox 始终保留；选择 CloakBrowser 后仅替换启动后端，注册流程保持一致。
+                            </p>
+                          </div>
+                        )}
             <div className="min-w-0 space-y-2">
               <Label htmlFor="browser_locale">浏览器界面语言</Label>
               <Select
