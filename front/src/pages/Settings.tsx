@@ -94,7 +94,8 @@ const BROWSER_ENGINES = [
   { value: "cloakbrowser", label: "CloakBrowser（Chromium）" },
 ];
 const BROWSER_BACKENDS = [
-  { value: "camoufox", label: "Camoufox（内置浏览器）" },
+  { value: "camoufox", label: "Camoufox（Firefox，默认）" },
+  { value: "cloakbrowser", label: "CloakBrowser（Chromium）" },
   { value: "nexbrowser", label: "NexBrowser（CDP 联动）" },
 ];
 const CLOUDFLARE_AUTH_MODES = [
@@ -423,19 +424,25 @@ export function SettingsPage({ section = "registration" }: { section?: SettingsS
             <div className="min-w-0 space-y-2">
                           <Label htmlFor="browser_backend">浏览器后端</Label>
                           <Select
-                            id="browser_backend"
-                            value={config.browser_backend || "camoufox"}
-                            onChange={(event) => setField("browser_backend", event.target.value)}
-                          >
+                                                      id="browser_backend"
+                                                      value={config.browser_backend || "camoufox"}
+                                                      onChange={(event) => {
+                                                        const v = event.target.value;
+                                                        setField("browser_backend", v);
+                                                        // 选 cloackbrowser 时自动同步引擎
+                                                        if (v === "cloakbrowser") setField("browser_engine", "cloakbrowser");
+                                                      }}
+                                                    >
                             {BROWSER_BACKENDS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                           </Select>
                           <p className="text-xs leading-5 text-muted-foreground">
-                            Camoufox 使用内置浏览器；选择 NexBrowser 后通过 CDP 连接指定窗口（复用指纹/代理）。
-                            切换后端后需<strong>重启服务</strong>生效。
-                          </p>
-                        </div>
-                        {config.browser_backend === "nexbrowser" ? (
-                          <div className="space-y-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 sm:col-span-2">
+                                                      Camoufox / CloakBrowser 使用内置浏览器；
+                                                      选择 NexBrowser 后通过 CDP 连接指定窗口（复用指纹/代理）。
+                                                      切换后端后需<strong>重启服务</strong>生效。
+                                                    </p>
+                                                  </div>
+                                                  {config.browser_backend === "nexbrowser" ? (
+                                                    <div className="space-y-3 rounded-xl border border-sky-100 bg-sky-50/40 p-3 sm:col-span-2">
                             <div className="text-sm font-medium text-foreground">NexBrowser 连接配置</div>
                             <div className="grid gap-3 sm:grid-cols-2">
                               <div className="min-w-0 space-y-2">
